@@ -36,6 +36,7 @@ acl_rule_attr_lookup_t aclMatchLookup =
 {
     { MATCH_IN_PORTS,          SAI_ACL_ENTRY_ATTR_FIELD_IN_PORTS },
     { MATCH_OUT_PORTS,         SAI_ACL_ENTRY_ATTR_FIELD_OUT_PORTS },
+    { MATCH_IN_PORT,           SAI_ACL_ENTRY_ATTR_FIELD_IN_PORT },
     { MATCH_SRC_IP,            SAI_ACL_ENTRY_ATTR_FIELD_SRC_IP },
     { MATCH_DST_IP,            SAI_ACL_ENTRY_ATTR_FIELD_DST_IP },
     { MATCH_SRC_IPV6,          SAI_ACL_ENTRY_ATTR_FIELD_SRC_IPV6 },
@@ -249,6 +250,40 @@ bool AclRule::validateAddMatch(string attr_name, string attr_value)
 
             value.aclfield.data.objlist.count = static_cast<uint32_t>(m_outPorts.size());
             value.aclfield.data.objlist.list = m_outPorts.data();
+        }
+        else if (attr_name == MATCH_IN_PORT)
+        {
+            if (attr_value.empty())
+            {
+                SWSS_LOG_ERROR("Empty port match provided");
+                return false;
+            }
+
+            Port port;
+            if (!gPortsOrch->getPort(attr_value, port))
+            {
+                SWSS_LOG_ERROR("Failed to locate port %s", attr_value.c_str());
+                return false;
+            }
+
+            sai_object_id_t in_port_id;
+            if (port.m_type == Port::PHY)
+            {
+                in_port_id = port.m_port_id;
+            }
+            else if (port.m_type == Port::LAG)
+            {
+                in_port_id = port.m_lag_id;
+            }
+            else
+            {
+                SWSS_LOG_ERROR(
+                        "Cannot bind rule to %s: IN_PORT can only match physical interfaces or LAGs",
+                        attr_value.c_str());
+                return false;
+            }
+
+            value.aclfield.data.oid = in_port_id;
         }
         else if (attr_name == MATCH_IP_TYPE)
         {
@@ -1339,6 +1374,8 @@ bool AclTable::create()
      * |------------------------------------------------------------------|
      * | MARTCH_ETHERTYPE  |      √       |      √       |                |
      * |------------------------------------------------------------------|
+     * | MATCH_IN_PORT     |              |              |       √        |
+     * |------------------------------------------------------------------|
      */
 
     if (type == ACL_TABLE_MIRROR)
@@ -1397,6 +1434,13 @@ bool AclTable::create()
         attr.id = SAI_ACL_TABLE_ATTR_FIELD_ICMPV6_CODE;
         attr.value.booldata = true;
         table_attrs.push_back(attr);
+
+        if (type == ACL_TABLE_MIRRORV6)
+        {
+            attr.id = SAI_ACL_TABLE_ATTR_FIELD_IN_PORT;
+            attr.value.booldata = true;
+            table_attrs.push_back(attr);
+        }
     }
     else // v4 only
     {
