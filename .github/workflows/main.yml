@@ -17,9 +17,6 @@ jobs:
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v2
-      
-      - name: Check out PR 
-        run: git checkout ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v1
